@@ -1489,6 +1489,84 @@ mod tests {
         );
     }
 
+    // Dart/Flutter are TOML-only filters (no RtkRule entries): the rewrite must
+    // prefix the FULL original command with `rtk `. In particular
+    // `dart run build_runner` must keep its `run` token — a prefix-stripping
+    // rule would produce the invalid native command `dart build_runner`.
+    #[test]
+    fn test_rewrite_toml_dart_build_runner_preserves_run() {
+        assert_eq!(
+            rewrite_command_no_prefixes(
+                "dart run build_runner build --delete-conflicting-outputs",
+                &[]
+            ),
+            Some("rtk dart run build_runner build --delete-conflicting-outputs".into())
+        );
+    }
+
+    #[test]
+    fn test_rewrite_toml_dart_analyze() {
+        assert_eq!(
+            rewrite_command_no_prefixes("dart analyze", &[]),
+            Some("rtk dart analyze".into())
+        );
+    }
+
+    #[test]
+    fn test_rewrite_toml_dart_format() {
+        assert_eq!(
+            rewrite_command_no_prefixes("dart format --output=none --set-exit-if-changed .", &[]),
+            Some("rtk dart format --output=none --set-exit-if-changed .".into())
+        );
+    }
+
+    #[test]
+    fn test_rewrite_toml_flutter_test_with_args() {
+        assert_eq!(
+            rewrite_command_no_prefixes("flutter test test/ --coverage", &[]),
+            Some("rtk flutter test test/ --coverage".into())
+        );
+    }
+
+    #[test]
+    fn test_rewrite_toml_flutter_analyze() {
+        assert_eq!(
+            rewrite_command_no_prefixes("flutter analyze", &[]),
+            Some("rtk flutter analyze".into())
+        );
+    }
+
+    #[test]
+    fn test_rewrite_toml_flutter_build() {
+        assert_eq!(
+            rewrite_command_no_prefixes("flutter build apk --release", &[]),
+            Some("rtk flutter build apk --release".into())
+        );
+    }
+
+    #[test]
+    fn test_rewrite_toml_flutter_pub_get() {
+        assert_eq!(
+            rewrite_command_no_prefixes("flutter pub get", &[]),
+            Some("rtk flutter pub get".into())
+        );
+    }
+
+    // Interactive/streaming commands must NOT be routed through the
+    // non-streaming TOML pipeline.
+    #[test]
+    fn test_rewrite_flutter_run_passthrough() {
+        assert_eq!(rewrite_command_no_prefixes("flutter run", &[]), None);
+    }
+
+    #[test]
+    fn test_rewrite_dart_run_non_build_runner_passthrough() {
+        assert_eq!(
+            rewrite_command_no_prefixes("dart run bin/server.dart", &[]),
+            None
+        );
+    }
+
     #[test]
     fn test_rewrite_toml_absolute_path() {
         assert_eq!(

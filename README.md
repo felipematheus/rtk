@@ -210,6 +210,19 @@ rtk bundle install              # Ruby gems (strip Using lines)
 rtk prisma generate             # Schema generation (no ASCII art)
 ```
 
+### Dart & Flutter
+```bash
+rtk dart analyze                # Dart analyzer, errors/warnings only (-75%)
+rtk dart test                   # Dart tests, failures only (-80%)
+rtk dart pub get                # Dart dependencies (-70%)
+rtk dart format .               # Formatter, changed files only
+rtk dart run build_runner build # Codegen, builder summaries only (-70%)
+rtk flutter analyze             # Flutter analyzer, errors/warnings only (-75%)
+rtk flutter test                # Flutter tests, failures only (-80%)
+rtk flutter pub get             # Flutter dependencies (-70%)
+rtk flutter build apk           # Build output, errors + result only (-75%)
+```
+
 ### AWS
 ```bash
 rtk aws sts get-caller-identity # One-line identity

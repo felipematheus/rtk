@@ -1,0 +1,97 @@
+[filters.dart-test]
+description = "Compact dart test — failures only: rewrite [E] lines to FAIL, strip passing/loading progress, keep failure details and summary"
+match_command = "^dart\\s+test\\b"
+strip_ansi = true
+filter_stderr = true
+# Compact-reporter failure lines carry the [E] marker; rewrite them to a FAIL
+# prefix so the progress-line strip below cannot touch them. Passing lines after
+# the first failure also carry a cumulative -N counter, so the counter alone is
+# NOT a failure signal — only [E] is.
+replace = [
+  { pattern = "^\\d\\d:\\d\\d\\s+\\+\\d+(?:\\s+~\\d+)?(?:\\s+-\\d+)?:\\s+(.+?)\\s*\\[E\\]\\s*$", replacement = "FAIL $1" },
+  { pattern = "^\\d\\d:\\d\\d\\s+\\+(\\d+)(?:\\s+~(\\d+))?\\s+-(\\d+):\\s+Some tests failed\\.?\\s*$", replacement = "Some tests failed ($1 passed, $3 failed)." },
+]
+match_output = [
+  { pattern = "All tests passed!", message = "ok dart test: all passed", unless = "(?m)^FAIL |Some tests failed" },
+]
+strip_lines_matching = [
+  "^\\s*$",
+  "^\\d\\d:\\d\\d\\s+\\+\\d+",
+  "^Consider enabling the flag chain-stack-traces",
+]
+max_lines = 200
+
+[[tests.dart-test]]
+name = "all passing — short-circuits"
+input = """
+00:00 +0: loading test/example_test.dart
+00:00 +0: test1
+00:00 +1: test2
+00:00 +2: test3
+00:00 +3: All tests passed!
+"""
+expected = "ok dart test: all passed"
+
+[[tests.dart-test]]
+name = "failures only — passing lines stripped even after first failure"
+input = """
+00:00 +0: loading test/example_test.dart
+00:00 +0: test/example_test.dart: passing test
+00:00 +1: test/all_pass_test.dart: passes 1
+00:00 +2 -1: test/example_test.dart: failing test [E]
+  Expected: <3>
+    Actual: <2>
+
+  package:matcher             expect
+  test/example_test.dart 8:5  main.<fn>
+
+00:00 +2 -1: test/example_test.dart: second passing
+00:00 +3 -1: test/all_pass_test.dart: passes 2
+00:00 +4 -1: Some tests failed.
+Failing tests:
+  test/example_test.dart: failing test
+Consider enabling the flag chain-stack-traces to receive more detailed exceptions.
+"""
+expected = """FAIL test/example_test.dart: failing test
+  Expected: <3>
+    Actual: <2>
+  package:matcher             expect
+  test/example_test.dart 8:5  main.<fn>
+Some tests failed (4 passed, 1 failed).
+Failing tests:
+  test/example_test.dart: failing test"""
+
+[[tests.dart-test]]
+name = "late failure after long passing run is not buried"
+input = """
+00:00 +0: loading test/big_test.dart
+00:00 +0: test/big_test.dart: case 1
+00:00 +1: test/big_test.dart: case 2
+00:00 +2: test/big_test.dart: case 3
+00:00 +3: test/big_test.dart: case 4
+00:00 +4: test/big_test.dart: case 5
+00:01 +5: test/big_test.dart: case 6
+00:01 +6: test/big_test.dart: case 7
+00:01 +7: test/big_test.dart: case 8
+00:01 +8: test/big_test.dart: case 9
+00:01 +9: test/big_test.dart: case 10
+00:02 +10 -1: test/big_test.dart: the last one [E]
+  Expected: true
+    Actual: false
+  test/big_test.dart 99:5  main.<fn>
+00:02 +10 -1: Some tests failed.
+Failing tests:
+  test/big_test.dart: the last one
+"""
+expected = """FAIL test/big_test.dart: the last one
+  Expected: true
+    Actual: false
+  test/big_test.dart 99:5  main.<fn>
+Some tests failed (10 passed, 1 failed).
+Failing tests:
+  test/big_test.dart: the last one"""
+
+[[tests.dart-test]]
+name = "empty input"
+input = ""
+expected = ""
