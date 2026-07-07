@@ -1,6 +1,6 @@
 [filters.dart-build-runner]
-description = "Compact dart run build_runner — strip AOT compile progress, per-file intermediate lines; keep builder summaries, warnings, errors, and final result"
-match_command = "^dart\\s+run\\s+build_runner\\b"
+description = "Compact build_runner (dart run / legacy dart|flutter pub run) — strip AOT compile progress, per-file intermediate lines; keep builder summaries, warnings, errors, and final result"
+match_command = "^(dart|flutter)\\s+(pub\\s+)?run\\s+build_runner\\b"
 strip_ansi = true
 filter_stderr = true
 strip_lines_matching = [
@@ -9,7 +9,8 @@ strip_lines_matching = [
   "^W These options have been removed",
   ".*;\\s*\\S+\\.dart$",
 ]
-max_lines = 60
+# tail, not head: SEVERE failure blocks come at the end of the run
+tail_lines = 60
 
 [[tests.dart-build-runner]]
 name = "full build with changes — strips progress, keeps builder summaries and final"

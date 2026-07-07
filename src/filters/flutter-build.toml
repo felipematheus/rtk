@@ -19,7 +19,8 @@ strip_lines_matching = [
   "^Running",
   "^\\[\\+\\d+ ms\\] ",
 ]
-max_lines = 60
+# tail, not head: compile/Xcode errors and the build result come at the end
+tail_lines = 60
 
 [[tests.flutter-build]]
 name = "web build — strips noise, keeps wasm findings and result"
