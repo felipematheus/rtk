@@ -1,0 +1,27 @@
+[filters.dart-format]
+description = "Compact dart format — short-circuit when nothing changed; keep changed files and summary"
+match_command = "^dart\\s+format\\b"
+strip_ansi = true
+strip_lines_matching = [
+  "^\\s*$",
+]
+match_output = [
+  { pattern = "\\(0 changed\\)", message = "ok dart format: no changes" },
+]
+max_lines = 60
+
+[[tests.dart-format]]
+name = "no changes — short-circuits"
+input = """
+Formatted 448 files (0 changed) in 3.42 seconds.
+"""
+expected = "ok dart format: no changes"
+
+[[tests.dart-format]]
+name = "changed files kept (--output=none --set-exit-if-changed)"
+input = """
+Changed lib/main.dart
+Changed lib/src/app.dart
+Formatted 448 files (2 changed) in 3.42 seconds.
+"""
+expected = "Changed lib/main.dart\nChanged lib/src/app.dart\nFormatted 448 files (2 changed) in 3.42 seconds."

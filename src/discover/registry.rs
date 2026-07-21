@@ -901,6 +901,11 @@ fn rewrite_segment_inner(
             if crate::core::toml_filter::is_rtk_reserved_command(base) {
                 return None;
             }
+            // Machine-readable reporters (dart/flutter test --reporter json)
+            // must not be line-filtered — same rationale as gh --json below.
+            if normalized.contains("--reporter json") || normalized.contains("--reporter=json") {
+                return None;
+            }
             if crate::core::toml_filter::command_matches_filter(&normalized) {
                 return Some(format!("rtk {}{}", cmd_part, redirect_suffix));
             }
@@ -1486,6 +1491,110 @@ mod tests {
         assert_eq!(
             rewrite_command_no_prefixes("just build", &[]),
             Some("rtk just build".into())
+        );
+    }
+
+    // Dart/Flutter are TOML-only filters (no RtkRule entries): the rewrite must
+    // prefix the FULL original command with `rtk `. In particular
+    // `dart run build_runner` must keep its `run` token — a prefix-stripping
+    // rule would produce the invalid native command `dart build_runner`.
+    #[test]
+    fn test_rewrite_toml_dart_build_runner_preserves_run() {
+        assert_eq!(
+            rewrite_command_no_prefixes(
+                "dart run build_runner build --delete-conflicting-outputs",
+                &[]
+            ),
+            Some("rtk dart run build_runner build --delete-conflicting-outputs".into())
+        );
+    }
+
+    // Legacy build_runner invocation (still the dominant form in real Claude
+    // Code history) must route through the same filter.
+    #[test]
+    fn test_rewrite_toml_flutter_pub_run_build_runner() {
+        assert_eq!(
+            rewrite_command_no_prefixes(
+                "flutter pub run build_runner build --delete-conflicting-outputs",
+                &[]
+            ),
+            Some("rtk flutter pub run build_runner build --delete-conflicting-outputs".into())
+        );
+    }
+
+    // Machine-readable reporter output must never be line-filtered.
+    #[test]
+    fn test_rewrite_flutter_test_reporter_json_passthrough() {
+        assert_eq!(
+            rewrite_command_no_prefixes("flutter test --reporter json", &[]),
+            None
+        );
+        assert_eq!(
+            rewrite_command_no_prefixes("dart test --reporter=json", &[]),
+            None
+        );
+    }
+
+    #[test]
+    fn test_rewrite_toml_dart_analyze() {
+        assert_eq!(
+            rewrite_command_no_prefixes("dart analyze", &[]),
+            Some("rtk dart analyze".into())
+        );
+    }
+
+    #[test]
+    fn test_rewrite_toml_dart_format() {
+        assert_eq!(
+            rewrite_command_no_prefixes("dart format --output=none --set-exit-if-changed .", &[]),
+            Some("rtk dart format --output=none --set-exit-if-changed .".into())
+        );
+    }
+
+    #[test]
+    fn test_rewrite_toml_flutter_test_with_args() {
+        assert_eq!(
+            rewrite_command_no_prefixes("flutter test test/ --coverage", &[]),
+            Some("rtk flutter test test/ --coverage".into())
+        );
+    }
+
+    #[test]
+    fn test_rewrite_toml_flutter_analyze() {
+        assert_eq!(
+            rewrite_command_no_prefixes("flutter analyze", &[]),
+            Some("rtk flutter analyze".into())
+        );
+    }
+
+    #[test]
+    fn test_rewrite_toml_flutter_build() {
+        assert_eq!(
+            rewrite_command_no_prefixes("flutter build apk --release", &[]),
+            Some("rtk flutter build apk --release".into())
+        );
+    }
+
+    #[test]
+    fn test_rewrite_toml_flutter_pub_get() {
+        assert_eq!(
+            rewrite_command_no_prefixes("flutter pub get", &[]),
+            Some("rtk flutter pub get".into())
+        );
+    }
+
+    // Interactive/streaming commands must NOT be routed through the
+    // non-streaming TOML pipeline.
+    #[test]
+    fn test_rewrite_flutter_run_passthrough() {
+        assert_eq!(rewrite_command_no_prefixes("flutter run", &[]), None);
+    }
+
+    #[test]
+    fn test_rewrite_dart_run_non_build_runner_passthrough() {
+        assert_eq!(
+            rewrite_command_no_prefixes("dart run bin/server.dart", &[]),
+            None
         );
     }
 
