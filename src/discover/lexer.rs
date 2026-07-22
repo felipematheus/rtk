@@ -18,6 +18,13 @@ pub fn tokenize(input: &str) -> Vec<ParsedToken> {
     tokenize_inner(input, false)
 }
 
+/// Like [`tokenize`], but emits a newline as an `Operator` token. A bare newline
+/// is a command separator in shell, exactly like `;` — callers that segment a
+/// compound command (permission checking, command rewriting) need to see it.
+pub fn tokenize_with_newlines(input: &str) -> Vec<ParsedToken> {
+    tokenize_inner(input, true)
+}
+
 fn tokenize_inner(input: &str, emit_newline: bool) -> Vec<ParsedToken> {
     let mut tokens = Vec::new();
     let mut current = String::new();

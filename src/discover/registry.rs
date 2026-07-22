@@ -5,7 +5,7 @@ use lazy_static::lazy_static;
 use regex::{Regex, RegexSet};
 use std::path::Path;
 
-use super::lexer::{split_on_operators, tokenize, TokenKind};
+use super::lexer::{split_on_operators, tokenize, tokenize_with_newlines, TokenKind};
 use super::rules::{IGNORED_EXACT, IGNORED_PREFIXES, RULES};
 
 const PHP_TOOL_NAMES: [&str; 6] = ["phpunit", "phpstan", "ecs", "pest", "paratest", "pint"];
@@ -587,6 +587,7 @@ pub fn rewrite_command(
         || trimmed.contains("||")
         || trimmed.contains(';')
         || trimmed.contains('|')
+        || trimmed.contains('\n')
         || trimmed.contains(" & ");
     if !has_compound && (trimmed.starts_with("rtk ") || trimmed == "rtk") {
         return Some(trimmed.to_string());
@@ -595,13 +596,23 @@ pub fn rewrite_command(
     rewrite_compound(trimmed, &compiled, &normalized_prefixes)
 }
 
-/// Rewrite a compound command (with `&&`, `||`, `;`, `|`) by rewriting each segment.
+/// Rewrite a compound command (with `&&`, `||`, `;`, `|`, or a newline) by
+/// rewriting each segment.
+///
+/// Newlines are segment separators here, exactly as they are in
+/// [`split_for_permissions`]. Agents routinely write `cd dir\ncmd` instead of
+/// `cd dir && cmd`, and treating the newline as plain whitespace collapsed the
+/// whole thing into one `cd ...` segment with no RTK equivalent, silently
+/// passing through unfiltered. Heredocs (the one construct where a newline is
+/// *not* a separator) are rejected by `has_heredoc` in `rewrite_command` before
+/// we get here, and command substitution / file redirects are rejected upstream
+/// by `contains_unattestable_construct`.
 fn rewrite_compound(
     cmd: &str,
     excluded: &[ExcludePattern],
     transparent_prefixes: &[String],
 ) -> Option<String> {
-    let tokens = tokenize(cmd);
+    let tokens = tokenize_with_newlines(cmd);
     let mut result = String::with_capacity(cmd.len() + 32);
     let mut any_changed = false;
     let mut seg_start: usize = 0;
@@ -619,7 +630,15 @@ fn rewrite_compound(
                     any_changed = true;
                 }
                 result.push_str(&rewritten);
-                if tok.value == ";" {
+                if tok.value == "\n" {
+                    // Preserve the author's line structure — no padding spaces, or
+                    // every rewritten multi-line command grows " \n ". The guard
+                    // collapses CRLF (tokenized as two newline operators) and blank
+                    // lines back to a single separator.
+                    if !result.ends_with('\n') {
+                        result.push('\n');
+                    }
+                } else if tok.value == ";" {
                     result.push(';');
                     let after = tok.offset + tok.value.len();
                     if after < cmd.len() {
@@ -1565,6 +1584,96 @@ mod tests {
             rewrite_command_no_prefixes("flutter analyze", &[]),
             Some("rtk flutter analyze".into())
         );
+    }
+
+    // A bare newline separates commands exactly like `;`. Agents write
+    // `cd dir<NL>cmd` constantly; before this, the newline was plain whitespace so
+    // the command collapsed to a single `cd ...` segment and passed through raw.
+    mod newline_separator {
+        use super::rewrite_command_no_prefixes;
+
+        #[test]
+        fn test_newline_separated_segment_is_rewritten() {
+            assert_eq!(
+                rewrite_command_no_prefixes("cd /tmp\ngo test ./...", &[]),
+                Some("cd /tmp\nrtk go test ./...".into())
+            );
+        }
+
+        #[test]
+        fn test_newline_matches_semicolon_behaviour() {
+            let nl = rewrite_command_no_prefixes("cd /tmp\nflutter analyze", &[]);
+            let semi = rewrite_command_no_prefixes("cd /tmp; flutter analyze", &[]);
+            assert!(nl.is_some() && semi.is_some());
+            assert_eq!(
+                nl.unwrap().replace('\n', "; "),
+                semi.unwrap(),
+                "newline and `;` must produce the same rewrite"
+            );
+        }
+
+        #[test]
+        fn test_indented_continuation_line_is_rewritten() {
+            assert_eq!(
+                rewrite_command_no_prefixes("cd /tmp\n  flutter test", &[]),
+                Some("cd /tmp\nrtk flutter test".into())
+            );
+        }
+
+        #[test]
+        fn test_every_newline_segment_is_rewritten() {
+            assert_eq!(
+                rewrite_command_no_prefixes("go build ./...\ngo test ./...", &[]),
+                Some("rtk go build ./...\nrtk go test ./...".into())
+            );
+        }
+
+        #[test]
+        fn test_blank_line_collapses_to_single_separator() {
+            assert_eq!(
+                rewrite_command_no_prefixes("cd /tmp\n\ngo test ./...", &[]),
+                Some("cd /tmp\nrtk go test ./...".into())
+            );
+        }
+
+        #[test]
+        fn test_crlf_does_not_double_separator() {
+            assert_eq!(
+                rewrite_command_no_prefixes("cd /tmp\r\ngo test ./...", &[]),
+                Some("cd /tmp\nrtk go test ./...".into())
+            );
+        }
+
+        // Safety: a newline inside a heredoc body is NOT a separator. `has_heredoc`
+        // must keep rejecting these, or we would rewrite commit-message text.
+        #[test]
+        fn test_heredoc_body_is_never_rewritten() {
+            assert_eq!(
+                rewrite_command_no_prefixes(
+                    "git commit -F - <<'EOF'\ngo test ./...\nEOF",
+                    &[]
+                ),
+                None,
+                "heredoc bodies must stay untouched"
+            );
+        }
+
+        #[test]
+        fn test_newline_with_file_redirect_still_passes_through_gate() {
+            // rewrite_command itself does not gate redirects — the caller does via
+            // contains_unattestable_construct. Assert that gate still fires.
+            assert!(crate::discover::lexer::contains_unattestable_construct(
+                "cd /tmp\ngo test ./... > out.txt"
+            ));
+        }
+
+        #[test]
+        fn test_no_rtk_equivalent_on_any_line_returns_none() {
+            assert_eq!(
+                rewrite_command_no_prefixes("cd /tmp\nhtop", &[]),
+                None
+            );
+        }
     }
 
     #[test]
